@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: nest_redis_queue
+    restart: always
+    ports:
+      - "6379:6379"
+    # O volume garante que se você desligar o PC, 
+    # as postagens pendentes continuem na fila quando ligar.
+    volumes:
+      - redis_data:/data
+
+volumes:
+  redis_data:
