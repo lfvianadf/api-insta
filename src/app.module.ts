@@ -11,6 +11,10 @@ import { BullModule } from '@nestjs/bullmq';
   useFactory: (configService: ConfigService) => ({
     connection: {
       url: configService.get<string>('REDIS_URL'),
+      // Adicione estas três propriedades para dar "resiliência" ao boot
+      maxRetriesPerRequest: null, // Evita que o BullMQ mate o processo se o Redis demorar
+      enableReadyCheck: false,    // Ignora o check de prontidão durante o carregamento do RDB
+      connectTimeout: 30000,      // Dá 30 segundos para o Redis responder
     },
   }),
   inject: [ConfigService],

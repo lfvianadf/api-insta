@@ -83,11 +83,11 @@ export class ApiInstaProcessor extends WorkerHost {
       await this.supabase.finalizePost(postId, mediaUrl);
 
       // 3. ENCAMINHAMENTO CORRIGIDO: Usamos a fila injetada no constructor
-      await this.uploadQueue.add('instagram-publish', {
+     /* await this.uploadQueue.add('instagram-publish', {
         postId,
         videoUrl: mediaUrl,
         caption: caption || 'Confira as novidades no Blog do Santana!'
-      });
+      });*/
 
       return { success: true, url: mediaUrl };
     } catch (error) {
