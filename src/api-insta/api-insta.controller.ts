@@ -8,7 +8,7 @@ export class ApiInstaController {
 
   @Post('upload')
   @UseInterceptors(FileInterceptor('video', {
-    limits: { fileSize: 100 * 1024 * 1024 } // 🛡️ Segurança: Limite de 100MB
+    limits: { fileSize: 125 * 1024 * 1024 } // 🛡️ Segurança: Limite de 100MB
   }))
   async uploadMedia(
     @UploadedFile() file: Express.Multer.File,

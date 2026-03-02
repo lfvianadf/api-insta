@@ -11,8 +11,9 @@ async function bootstrap() {
     credentials: true,
     allowedHeaders: 'Content-Type, Accept, Authorization',
   })
-  app.use(json({ limit: '150mb' }));
-  app.use(urlencoded({ limit: '150mb', extended: true }));
+  //Aumentando o limite do JSON.
+  app.use(json({ limit: '125mb' }));
+  app.use(urlencoded({ limit: '125mb', extended: true }));
   await app.listen(process.env.PORT ?? 3000);
 }
 bootstrap();
