@@ -19,18 +19,35 @@ export class ApiInstaService {
    * O vídeo não passa mais por aqui como Buffer.
    */
   async prepareUpload(postData: any, fileInfo: { fileName: string; mimetype: string }) {
-    // 1. Criamos o rascunho no Supabase primeiro (Controle)
-    const { related_links, ...cleanPostData } = postData;
-    cleanPostData.tags = JSON.parse(cleanPostData.tags || '[]');
-    const draft = await this.supabaseService.createDraft(cleanPostData);
+  const { related_links, ...cleanPostData } = postData;
 
-    // 2. Geramos as URLs de Upload e a Permanente no R2
-    // Usamos o ID do post no nome do arquivo para evitar conflitos
-    const uniqueFileName = `${draft.id}-${fileInfo.fileName}`;
-    const { uploadUrl, publicUrl } = await this.storageR2Service.getPresignedUrl(
-      uniqueFileName,
-      fileInfo.mimetype
-    );
+  // BLINDAGEM: Tratamento seguro para as Tags
+  try {
+    if (!cleanPostData.tags) {
+      // Se não vier nada, define como array vazio
+      cleanPostData.tags = [];
+    } else if (typeof cleanPostData.tags === 'string') {
+      // Tenta transformar em JSON se for string, se falhar vira um array simples
+      try {
+        cleanPostData.tags = JSON.parse(cleanPostData.tags);
+      } catch {
+        cleanPostData.tags = [cleanPostData.tags];
+      }
+    }
+    // Se já for um array (voto do front), não faz nada
+  } catch (error) {
+    cleanPostData.tags = [];
+  }
+
+  // 1. Criamos o rascunho no Supabase (Etapa de controle)
+  const draft = await this.supabaseService.createDraft(cleanPostData);
+
+  // 2. Geramos as URLs de Upload e Permanente no R2
+  const uniqueFileName = `${draft.id}-${fileInfo.fileName}`;
+  const { uploadUrl, publicUrl } = await this.storageR2Service.getPresignedUrl(
+    uniqueFileName,
+    fileInfo.mimetype
+  );
 
     // 3. Retornamos para o Frontend as instruções de onde subir o arquivo
     return {
