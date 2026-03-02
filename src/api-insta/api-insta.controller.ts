@@ -6,15 +6,24 @@ import { ApiInstaService } from './api-insta.service';
 export class ApiInstaController {
   constructor(private readonly apiInstaService: ApiInstaService) {}
 
-  @Post('upload')
-  @UseInterceptors(FileInterceptor('video', {
-    limits: { fileSize: 125 * 1024 * 1024 } // 🛡️ Segurança: Limite de 100MB
-  }))
-  async uploadMedia(
-    @UploadedFile() file: Express.Multer.File,
-    @Body() postData: any // Aqui vem title, slug, content, category, etc.
+  /**
+   * NOVO PASSO 1: Solicitar permissão de upload.
+   * O Front-end envia os metadados e recebe as URLs do R2.
+   * Não há recepção de arquivo aqui, logo, sem estouro de RAM.
+   */
+  @Post('request-upload')
+  async requestUpload(
+    @Body() body: { postData: any; fileInfo: { fileName: string; mimetype: string } }
   ) {
-    // Chamamos o service passando o arquivo e os metadados do banco
-    return this.apiInstaService.handleNewPost(file, postData);
+    return this.apiInstaService.prepareUpload(body.postData, body.fileInfo);
+  }
+
+  /**
+   * NOVO PASSO 2: Finalizar o post.
+   * Chamado pelo Front-end logo após o vídeo de 100MB chegar no R2.
+   */
+  @Post('finalize')
+  async finalize(@Body() body: { postId: string; mediaUrl: string }) {
+    return this.apiInstaService.finalizePostAfterUpload(body.postId, body.mediaUrl);
   }
 }

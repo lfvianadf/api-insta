@@ -60,36 +60,4 @@ export class ApiInstaService {
 
     return { success: true, message: 'Processamento iniciado na fila.' };
   }
-
-  /* CÓDIGO ANTIGO (COMENTADO PARA REFERÊNCIA)
-  async handleNewPost(file: Express.Multer.File, postData: any) {
-    // 1. Chamamos a função de INSERT que criamos (Etapa 1)
-    const { related_links, ...cleanPostData } = postData;
-  
-    cleanPostData.tags = JSON.parse(cleanPostData.tags || '[]');
-  
-    const draft = await this.supabaseService.createDraft(cleanPostData);
-
-    // 2. Colocamos o trabalho pesado na fila do BullMQ
-    // ESTE BUFFER DE 100MB NO REDIS CAUSAVA O ERRO "OUT OF MEMORY"
-    await this.uploadQueue.add('process-video', {
-      postId: draft.id,       
-      fileBuffer: file.buffer, // O vídeo (Causa do estouro de RAM)
-      fileName: file.originalname,
-      mimetype: file.mimetype,
-    }, {
-      attempts: 3,             
-      backoff: 2500,           
-      removeOnComplete: true   
-    });
-
-    // 3. Resposta Imediata para o Frontend
-    return {
-      status: 'success',
-      message: 'Dados salvos! O vídeo está sendo processado em background.',
-      postId: draft.id,
-      slug: draft.slug
-    };
-  }
-  */
 }

@@ -57,33 +57,4 @@ export class StorageR2Service {
 
     return { uploadUrl, publicUrl };
   }
-
-  /* CÓDIGO ANTIGO (COMENTADO PARA REFERÊNCIA)
-  async uploadFile(
-    fileBuffer: Buffer, 
-    originalName: string, 
-    mimetype: string, 
-    folder: string = 'posts'
-  ) {
-    // ESTE MÉTODO RECEBIA O BUFFER DE 100MB E CAUSAVA O OUT OF MEMORY
-    const sanitizedName = originalName
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '') 
-      .replace(/[^a-zA-Z0-9.]/g, '-') 
-      .toLowerCase();
-
-    const fileName = `${folder}/${Date.now()}-${sanitizedName}`;
-
-    await this.s3Client.send(
-      new PutObjectCommand({
-        Bucket: this.configService.get<string>('R2_BUCKET_NAME'),
-        Key: fileName,
-        Body: fileBuffer, // O culpado do consumo de RAM
-        ContentType: mimetype,
-      }),
-    );
-
-    return `${this.configService.get<string>('R2_PUBLIC_URL')}/${fileName}`;
-  }
-  */
 }
