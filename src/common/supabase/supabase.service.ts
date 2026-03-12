@@ -55,4 +55,23 @@ export class SupabaseService {
     }
     return data;
   }
+
+  async updatePostIgStatus(
+  postId: string,
+  status: 'published' | 'failed',
+  igMediaId: string | null,
+): Promise<void> {
+  const { error } = await this.client
+    .from('posts')
+    .update({
+      ig_status: status,
+      ig_media_id: igMediaId,
+    })
+    .eq('id', postId);
+
+  if (error) {
+    throw new Error(`Supabase updatePostIgStatus error: ${error.message}`);
+  }
 }
+}
+
