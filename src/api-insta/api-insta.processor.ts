@@ -42,7 +42,7 @@ export class ApiInstaProcessor extends WorkerHost {
        await this.uploadQueue.add('instagram-publish', {
         postId,
         videoUrl: mediaUrl,
-        caption: caption || 'Confira as novidades no Blog do Santana!'
+        caption: caption || 'Essa matéria está disponível no Blog do Santana! Acompanhe em blogdosantana.com.br'
       });
 
       return { success: true, url: mediaUrl };
