@@ -31,23 +31,31 @@ export class ApiInstaService {
 
     const draft = await this.supabaseService.createDraft(cleanPostData);
 
-    const uniqueFileName = `${draft.id}-${fileInfo.fileName}`;
-    const { uploadUrl, publicUrl } = await this.storageR2Service.getPresignedUrl(
-      uniqueFileName,
-      fileInfo.mimetype
-    );
+    let uploadUrl: string | null = null;
+    let publicUrl: string | null =null;
+
+    if (fileInfo.mimetype.startsWith('video/')) {
+      // Vídeo → gera presigned URL do R2
+      const uniqueFileName = `${draft.id}-${fileInfo.fileName}`;
+      const result = await this.storageR2Service.getPresignedUrl(uniqueFileName, fileInfo.mimetype);
+      uploadUrl = result.uploadUrl;
+      publicUrl = result.publicUrl;
+    } else {
+      // Imagem → sem R2, a URL virá do Supabase após o upload no front-end
+      uploadUrl = null;
+      publicUrl = null;
+    }
 
     return {
       status: 'success',
-      uploadUrl,
-      publicUrl,
+      uploadUrl,   // null para imagens
+      publicUrl,   // null para imagens — front-end preenche depois
       postId: draft.id,
       slug: draft.slug,
-      caption: cleanPostData.content ?? null, // ✅ expõe o caption pro front-end
+      caption: cleanPostData.caption ?? null,
     };
   }
-
-  async finalizePostAfterUpload(postId: string, mediaUrl: string, caption?: string) { // ✅ recebe caption
+  async finalizePostAfterUpload(postId: string, mediaUrl: string, caption?: string, mimetype?: string) { // ✅ recebe caption
     await this.uploadQueue.add('process-video', {
       postId,
       mediaUrl,

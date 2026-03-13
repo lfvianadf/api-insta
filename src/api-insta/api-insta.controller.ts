@@ -14,7 +14,7 @@ export class ApiInstaController {
 
   @Post('finalize')
   async finalize(
-    @Body() body: { postId: string; mediaUrl: string; caption?: string } // ✅ recebe caption
+    @Body() body: { postId: string; mediaUrl: string; caption?: string, mimetype?: string  } // ✅ recebe caption
   ) {
     return this.apiInstaService.finalizePostAfterUpload(body.postId, body.mediaUrl, body.caption);
   }
