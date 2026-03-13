@@ -17,7 +17,7 @@ export class ApiInstaProcessor extends WorkerHost {
   async process(job: Job<any>): Promise<any> {
     switch (job.name) {
       case 'process-video':
-        return await this.handleVideoUpload(job);
+        return await this.handleMediaUpload(job);
       case 'instagram-publish':
         return await this.handleInstagramPublish(job);
       default:
@@ -26,11 +26,11 @@ export class ApiInstaProcessor extends WorkerHost {
   }
 
   /**
-   * O vídeo já está no R2.
+   * A mídia já está no R2.
    * Apenas vinculamos a URL ao post no Supabase.
    */
-  private async handleVideoUpload(job: Job<any>) {
-    const { postId, mediaUrl, caption } = job.data;
+  private async handleMediaUpload(job: Job<any>) {
+    const { postId, mediaUrl, caption, mimetype } = job.data; // ✅ recebe mimetype
 
     try {
       console.log(`[Worker] Finalizando post ${postId} com a URL: ${mediaUrl}`);
@@ -38,11 +38,12 @@ export class ApiInstaProcessor extends WorkerHost {
       // 1. Atualiza o Supabase com a URL definitiva que já existe no R2
       await this.supabase.finalizePost(postId, mediaUrl);
 
-      // 2. Descomente quando quiser publicar no Instagram automaticamente
-       await this.uploadQueue.add('instagram-publish', {
+      // 2. Publica no Instagram automaticamente
+      await this.uploadQueue.add('instagram-publish', {
         postId,
-        videoUrl: mediaUrl,
-        caption: caption || 'Essa matéria está disponível no Blog do Santana! Acompanhe em blogdosantana.com.br'
+        mediaUrl,
+        caption: caption || 'Essa matéria está disponível no Blog do Santana! Acompanhe em blogdosantana.com.br',
+        mimetype, // ✅ passa mimetype adiante
       });
 
       return { success: true, url: mediaUrl };
@@ -53,9 +54,8 @@ export class ApiInstaProcessor extends WorkerHost {
   }
 
   private async handleInstagramPublish(job: Job<any>) {
-    const { postId, videoUrl, caption } = job.data;
+    const { postId, mediaUrl, caption, mimetype } = job.data; // ✅ recebe mimetype
 
-    // ✅ Melhoria 4: Validação das variáveis de ambiente antes de prosseguir
     const igBusinessId = process.env.INSTAGRAM_BUSINESS_ID;
     const accessToken = process.env.INSTAGRAM_ACCESS_TOKEN;
 
@@ -65,24 +65,24 @@ export class ApiInstaProcessor extends WorkerHost {
       );
     }
 
+    const isVideo = mimetype?.startsWith('video'); // ✅ detecta o tipo
+
     try {
-      // Passo 1: Criar o Container de Vídeo (Reels)
-      // ✅ Melhoria 2: Padronizado para graph.instagram.com
+      // Passo 1: Criar o Container de mídia
       const containerResponse = await axios.post(
         `https://graph.instagram.com/v21.0/${igBusinessId}/media`,
         {
-          video_url: videoUrl,
+          [isVideo ? 'video_url' : 'image_url']: mediaUrl, // ✅ campo correto por tipo
           caption,
-          media_type: 'REELS',
+          media_type: isVideo ? 'REELS' : 'IMAGE',         // ✅ tipo correto
           access_token: accessToken,
         },
       );
 
       const creationId = containerResponse.data.id;
 
-      // Passo 2: Aguardar processamento com verificação de status
-      // ✅ Melhoria 1: waitForVideoReady agora é método privado da classe
-      await this.waitForVideoReady(creationId, accessToken);
+      // Passo 2: Aguardar processamento (apenas para vídeos)
+      if (isVideo) await this.waitForVideoReady(creationId, accessToken); // ✅ imagens pulam essa etapa
 
       // Passo 3: Publicar
       const publishResponse = await axios.post(
@@ -95,14 +95,12 @@ export class ApiInstaProcessor extends WorkerHost {
 
       const igId = publishResponse.data.id;
 
-      // ✅ Melhoria 3: Atualiza Supabase com sucesso e igId
       await this.supabase.updatePostIgStatus(postId, 'published', igId);
 
       return { success: true, igId };
     } catch (error) {
       const errorMsg = error.response?.data?.error?.message || error.message;
 
-      // ✅ Melhoria 3: Registra falha no Supabase
       await this.supabase.updatePostIgStatus(postId, 'failed', null);
 
       throw new Error(`Instagram Fail: ${errorMsg}`);
@@ -110,7 +108,6 @@ export class ApiInstaProcessor extends WorkerHost {
   }
 
   /**
-   * ✅ Melhoria 1: Método privado separado (era função dentro do try/catch)
    * Verifica o status do container de mídia no Instagram até estar pronto.
    * Máximo de ~5 minutos (20 tentativas x 15s).
    */
@@ -118,8 +115,8 @@ export class ApiInstaProcessor extends WorkerHost {
     creationId: string,
     accessToken: string,
   ): Promise<void> {
-    const maxAttempts = 20;   // ~5 minutos no total
-    const intervalMs = 15000; // verifica a cada 15 segundos
+    const maxAttempts = 20;
+    const intervalMs = 15000;
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       await new Promise((resolve) => setTimeout(resolve, intervalMs));
@@ -136,7 +133,7 @@ export class ApiInstaProcessor extends WorkerHost {
 
       const { status_code } = statusResponse.data;
 
-      if (status_code === 'FINISHED') return; // ✅ pronto para publicar
+      if (status_code === 'FINISHED') return;
       if (status_code === 'ERROR')
         throw new Error('Meta falhou ao processar o vídeo');
       if (status_code === 'EXPIRED')
@@ -145,7 +142,6 @@ export class ApiInstaProcessor extends WorkerHost {
       console.log(
         `[Worker] Tentativa ${attempt}/${maxAttempts} — status: ${status_code}`,
       );
-      // status 'IN_PROGRESS' continua aguardando
     }
 
     throw new Error('Timeout: vídeo não processou em 5 minutos');
