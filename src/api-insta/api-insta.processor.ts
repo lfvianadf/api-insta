@@ -54,58 +54,73 @@ export class ApiInstaProcessor extends WorkerHost {
   }
 
   private async handleInstagramPublish(job: Job<any>) {
-    const { postId, mediaUrl, caption, mimetype } = job.data; // ✅ recebe mimetype
+  const { postId, mediaUrl, caption, mimetype } = job.data;
 
-    const igBusinessId = process.env.INSTAGRAM_BUSINESS_ID;
-    const accessToken = process.env.INSTAGRAM_ACCESS_TOKEN;
+  // ✅ Log 1: o que chegou no job
+  console.log('[Instagram] Job recebido:', { postId, mediaUrl, caption, mimetype });
 
-    if (!igBusinessId || !accessToken) {
-      throw new Error(
-        'Variáveis INSTAGRAM_BUSINESS_ID ou INSTAGRAM_ACCESS_TOKEN não configuradas',
-      );
-    }
+  const igBusinessId = process.env.INSTAGRAM_BUSINESS_ID;
+  const accessToken = process.env.INSTAGRAM_ACCESS_TOKEN;
 
-    const isVideo = mimetype?.startsWith('video'); // ✅ detecta o tipo
-
-    try {
-      // Passo 1: Criar o Container de mídia
-      const containerResponse = await axios.post(
-        `https://graph.instagram.com/v21.0/${igBusinessId}/media`,
-        {
-          [isVideo ? 'video_url' : 'image_url']: mediaUrl, // ✅ campo correto por tipo
-          caption,
-          media_type: isVideo ? 'REELS' : 'IMAGE',         // ✅ tipo correto
-          access_token: accessToken,
-        },
-      );
-
-      const creationId = containerResponse.data.id;
-
-      // Passo 2: Aguardar processamento (apenas para vídeos)
-      if (isVideo) await this.waitForVideoReady(creationId, accessToken); // ✅ imagens pulam essa etapa
-
-      // Passo 3: Publicar
-      const publishResponse = await axios.post(
-        `https://graph.instagram.com/v21.0/${igBusinessId}/media_publish`,
-        {
-          creation_id: creationId,
-          access_token: accessToken,
-        },
-      );
-
-      const igId = publishResponse.data.id;
-
-      await this.supabase.updatePostIgStatus(postId, 'published', igId);
-
-      return { success: true, igId };
-    } catch (error) {
-      const errorMsg = error.response?.data?.error?.message || error.message;
-
-      await this.supabase.updatePostIgStatus(postId, 'failed', null);
-
-      throw new Error(`Instagram Fail: ${errorMsg}`);
-    }
+  if (!igBusinessId || !accessToken) {
+    throw new Error('Variáveis INSTAGRAM_BUSINESS_ID ou INSTAGRAM_ACCESS_TOKEN não configuradas');
   }
+
+  const isVideo = mimetype?.startsWith('video');
+
+  // ✅ Log 2: o que vai ser enviado pra API do Instagram
+  console.log('[Instagram] Payload para criação do container:', {
+    isVideo,
+    mediaUrl,
+    caption,
+    media_type: isVideo ? 'REELS' : 'IMAGE',
+  });
+
+  try {
+    const containerResponse = await axios.post(
+      `https://graph.instagram.com/v21.0/${igBusinessId}/media`,
+      {
+        [isVideo ? 'video_url' : 'image_url']: mediaUrl,
+        caption,
+        media_type: isVideo ? 'REELS' : 'IMAGE',
+        access_token: accessToken,
+      },
+    );
+
+    const creationId = containerResponse.data.id;
+
+    // ✅ Log 3: container criado com sucesso
+    console.log('[Instagram] Container criado:', creationId);
+
+    if (isVideo) await this.waitForVideoReady(creationId, accessToken);
+
+    const publishResponse = await axios.post(
+      `https://graph.instagram.com/v21.0/${igBusinessId}/media_publish`,
+      {
+        creation_id: creationId,
+        access_token: accessToken,
+      },
+    );
+
+    const igId = publishResponse.data.id;
+
+    // ✅ Log 4: publicado com sucesso
+    console.log('[Instagram] Publicado com sucesso. igId:', igId);
+
+    await this.supabase.updatePostIgStatus(postId, 'published', igId);
+
+    return { success: true, igId };
+  } catch (error) {
+    // ✅ Log 5: erro completo da API do Instagram
+    console.error('[Instagram] Erro completo:', JSON.stringify(error.response?.data, null, 2));
+    console.error('[Instagram] Status HTTP:', error.response?.status);
+    console.error('[Instagram] Mensagem:', error.message);
+
+    const errorMsg = error.response?.data?.error?.message || error.message;
+    await this.supabase.updatePostIgStatus(postId, 'failed', null);
+    throw new Error(`Instagram Fail: ${errorMsg}`);
+  }
+}
 
   /**
    * Verifica o status do container de mídia no Instagram até estar pronto.
