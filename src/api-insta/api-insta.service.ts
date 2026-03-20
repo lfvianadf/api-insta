@@ -52,7 +52,7 @@ export class ApiInstaService {
       publicUrl,   // null para imagens — front-end preenche depois
       postId: draft.id,
       slug: draft.slug,
-      caption: cleanPostData.caption ?? null,
+      caption: cleanPostData.excerpt ?? null,
     };
   }
   async finalizePostAfterUpload(postId: string, mediaUrl: string, caption?: string, mimetype?: string) { // ✅ recebe caption
@@ -60,6 +60,7 @@ export class ApiInstaService {
       postId,
       mediaUrl,
       caption, // ✅ passa para o worker
+      mimetype
     }, {
       attempts: 3,
       backoff: 2500,
