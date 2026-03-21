@@ -92,7 +92,7 @@ export class ApiInstaProcessor extends WorkerHost {
     // ✅ Log 3: container criado com sucesso
     console.log('[Instagram] Container criado:', creationId);
 
-    if (isVideo) await this.waitForVideoReady(creationId, accessToken);
+    await this.waitForVideoReady(creationId, accessToken);
 
     const publishResponse = await axios.post(
       `https://graph.instagram.com/v21.0/${igBusinessId}/media_publish`,
