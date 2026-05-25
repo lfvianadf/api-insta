@@ -41,7 +41,7 @@ export class ApiInstaProcessor extends WorkerHost {
       });
 
       return { success: true, url: mediaUrl };
-    } catch (error) {
+    } catch (error: any) {
       console.error(`[Worker] Erro ao finalizar post ${postId}:`, error.message);
       throw error;
     }
@@ -103,6 +103,9 @@ export class ApiInstaProcessor extends WorkerHost {
     if (!igBusinessId || !accessToken) {
       throw new Error('Variáveis INSTAGRAM_BUSINESS_ID ou INSTAGRAM_ACCESS_TOKEN não configuradas');
     }
+
+    console.log('[Instagram] Token (primeiros 20 chars):', accessToken?.substring(0, 20));
+    console.log('[Instagram] Token length:', accessToken?.length);
 
     const isVideo = mimetype?.startsWith('video');
 
