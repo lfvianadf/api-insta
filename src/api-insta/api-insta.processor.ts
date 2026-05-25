@@ -25,25 +25,19 @@ export class ApiInstaProcessor extends WorkerHost {
     }
   }
 
-  /**
-   * A mídia já está no R2.
-   * Apenas vinculamos a URL ao post no Supabase.
-   */
   private async handleMediaUpload(job: Job<any>) {
-    const { postId, mediaUrl, caption, mimetype } = job.data; // ✅ recebe mimetype
+    const { postId, mediaUrl, caption, mimetype } = job.data;
 
     try {
       console.log(`[Worker] Finalizando post ${postId} com a URL: ${mediaUrl}`);
 
-      // 1. Atualiza o Supabase com a URL definitiva que já existe no R2
       await this.supabase.finalizePost(postId, mediaUrl);
 
-      // 2. Publica no Instagram automaticamente
       await this.uploadQueue.add('instagram-publish', {
         postId,
         mediaUrl,
         caption: caption || 'Essa matéria está disponível no Blog do Santana! Acompanhe em blogdosantana.com.br',
-        mimetype, // ✅ passa mimetype adiante
+        mimetype,
       });
 
       return { success: true, url: mediaUrl };
@@ -53,135 +47,70 @@ export class ApiInstaProcessor extends WorkerHost {
     }
   }
 
-  private async refreshTokenIfNeeded(): Promise<string> {
-    const currentToken = process.env.INSTAGRAM_ACCESS_TOKEN;
-    const appId = process.env.INSTA_APP_ID;
-    const appSecret = process.env.INSTA_APP_SECRET;
+  private async handleInstagramPublish(job: Job<any>) {
+    const { postId, mediaUrl, caption, mimetype } = job.data;
 
-    console.log('[Instagram] Verificando token... appId configurado:', !!appId, '| appSecret configurado:', !!appSecret);
+    console.log('[Instagram] Job recebido:', { postId, mediaUrl, caption, mimetype });
 
-    if (!currentToken || !appId || !appSecret) {
-      throw new Error('Variáveis INSTAGRAM_ACCESS_TOKEN, INSTA_APP_ID ou INSTA_APP_SECRET não configuradas');
+    const igBusinessId = process.env.INSTAGRAM_BUSINESS_ID;
+    const accessToken = process.env.INSTAGRAM_ACCESS_TOKEN;
+
+    if (!igBusinessId || !accessToken) {
+      throw new Error('Variáveis INSTAGRAM_BUSINESS_ID ou INSTAGRAM_ACCESS_TOKEN não configuradas');
     }
 
-    let expires_at: number;
-    let is_valid: boolean;
+    const isVideo = mimetype?.startsWith('video');
+
+    console.log('[Instagram] Payload para criação do container:', {
+      isVideo,
+      mediaUrl,
+      caption,
+      media_type: isVideo ? 'REELS' : 'IMAGE',
+    });
 
     try {
-      const debugResponse = await axios.get('https://graph.facebook.com/debug_token', {
-        params: {
-          input_token: currentToken,
-          access_token: `${appId}|${appSecret}`,
+      const containerResponse = await axios.post(
+        `https://graph.instagram.com/v25.0/${igBusinessId}/media`,
+        {
+          [isVideo ? 'video_url' : 'image_url']: mediaUrl,
+          caption,
+          media_type: isVideo ? 'REELS' : 'IMAGE',
+          access_token: accessToken,
         },
-      });
-      expires_at = debugResponse.data.data.expires_at;
-      is_valid = debugResponse.data.data.is_valid;
-      console.log('[Instagram] Token válido:', is_valid, '| Expira em (unix):', expires_at);
-    } catch (err) {
-      console.error('[Instagram] Erro ao verificar token:', JSON.stringify(err.response?.data, null, 2) || err.message);
-      throw new Error('Falha ao verificar token do Instagram: ' + (err.response?.data?.error?.message || err.message));
-    }
+      );
 
-    if (!is_valid) {
-      throw new Error('Token do Instagram inválido. Gere um novo token manualmente no Meta for Developers.');
-    }
+      const creationId = containerResponse.data.id;
 
-    // Renova se faltar menos de 15 dias para expirar
-    const daysUntilExpiry = (expires_at - Date.now() / 1000) / 86400;
-    if (daysUntilExpiry < 15) {
-      console.log(`[Instagram] Token expira em ${Math.floor(daysUntilExpiry)} dias. Renovando...`);
+      console.log('[Instagram] Container criado:', creationId);
 
-      const refreshResponse = await axios.get('https://graph.facebook.com/oauth/access_token', {
-        params: {
-          grant_type: 'fb_exchange_token',
-          client_id: appId,
-          client_secret: appSecret,
-          fb_exchange_token: currentToken,
+      await this.waitForVideoReady(creationId, accessToken);
+
+      const publishResponse = await axios.post(
+        `https://graph.instagram.com/v25.0/${igBusinessId}/media_publish`,
+        {
+          creation_id: creationId,
+          access_token: accessToken,
         },
-      });
+      );
 
-      const newToken = refreshResponse.data.access_token;
-      process.env.INSTAGRAM_ACCESS_TOKEN = newToken;
-      console.log('[Instagram] Token renovado com sucesso. Atualize o .env com o novo valor:', newToken);
-      return newToken;
+      const igId = publishResponse.data.id;
+
+      console.log('[Instagram] Publicado com sucesso. igId:', igId);
+
+      await this.supabase.updatePostIgStatus(postId, 'published', igId);
+
+      return { success: true, igId };
+    } catch (error: any) {
+      console.error('[Instagram] Erro completo:', JSON.stringify(error.response?.data, null, 2));
+      console.error('[Instagram] Status HTTP:', error.response?.status);
+      console.error('[Instagram] Mensagem:', error.message);
+
+      const errorMsg = error.response?.data?.error?.message || error.message;
+      await this.supabase.updatePostIgStatus(postId, 'failed', null);
+      throw new Error(`Instagram Fail: ${errorMsg}`);
     }
-
-    return currentToken;
   }
 
-  private async handleInstagramPublish(job: Job<any>) {
-  const { postId, mediaUrl, caption, mimetype } = job.data;
-
-  // ✅ Log 1: o que chegou no job
-  console.log('[Instagram] Job recebido:', { postId, mediaUrl, caption, mimetype });
-
-  const igBusinessId = process.env.INSTAGRAM_BUSINESS_ID;
-  const accessToken = await this.refreshTokenIfNeeded();
-
-  if (!igBusinessId) {
-    throw new Error('Variável INSTAGRAM_BUSINESS_ID não configurada');
-  }
-
-  const isVideo = mimetype?.startsWith('video');
-
-  // ✅ Log 2: o que vai ser enviado pra API do Instagram
-  console.log('[Instagram] Payload para criação do container:', {
-    isVideo,
-    mediaUrl,
-    caption,
-    media_type: isVideo ? 'REELS' : 'IMAGE',
-  });
-
-  try {
-    const containerResponse = await axios.post(
-      `https://graph.instagram.com/v21.0/${igBusinessId}/media`,
-      {
-        [isVideo ? 'video_url' : 'image_url']: mediaUrl,
-        caption,
-        media_type: isVideo ? 'REELS' : 'IMAGE',
-        access_token: accessToken,
-      },
-    );
-
-    const creationId = containerResponse.data.id;
-
-    // ✅ Log 3: container criado com sucesso
-    console.log('[Instagram] Container criado:', creationId);
-
-    await this.waitForVideoReady(creationId, accessToken);
-
-    const publishResponse = await axios.post(
-      `https://graph.instagram.com/v21.0/${igBusinessId}/media_publish`,
-      {
-        creation_id: creationId,
-        access_token: accessToken,
-      },
-    );
-
-    const igId = publishResponse.data.id;
-
-    // ✅ Log 4: publicado com sucesso
-    console.log('[Instagram] Publicado com sucesso. igId:', igId);
-
-    await this.supabase.updatePostIgStatus(postId, 'published', igId);
-
-    return { success: true, igId };
-  } catch (error) {
-    // ✅ Log 5: erro completo da API do Instagram
-    console.error('[Instagram] Erro completo:', JSON.stringify(error.response?.data, null, 2));
-    console.error('[Instagram] Status HTTP:', error.response?.status);
-    console.error('[Instagram] Mensagem:', error.message);
-
-    const errorMsg = error.response?.data?.error?.message || error.message;
-    await this.supabase.updatePostIgStatus(postId, 'failed', null);
-    throw new Error(`Instagram Fail: ${errorMsg}`);
-  }
-}
-
-  /**
-   * Verifica o status do container de mídia no Instagram até estar pronto.
-   * Máximo de ~5 minutos (20 tentativas x 15s).
-   */
   private async waitForVideoReady(
     creationId: string,
     accessToken: string,
@@ -193,7 +122,7 @@ export class ApiInstaProcessor extends WorkerHost {
       await new Promise((resolve) => setTimeout(resolve, intervalMs));
 
       const statusResponse = await axios.get(
-        `https://graph.instagram.com/v21.0/${creationId}`,
+        `https://graph.instagram.com/v25.0/${creationId}`,
         {
           params: {
             fields: 'status_code,status',
