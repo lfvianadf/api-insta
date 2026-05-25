@@ -58,19 +58,29 @@ export class ApiInstaProcessor extends WorkerHost {
     const appId = process.env.INSTA_APP_ID;
     const appSecret = process.env.INSTA_APP_SECRET;
 
+    console.log('[Instagram] Verificando token... appId configurado:', !!appId, '| appSecret configurado:', !!appSecret);
+
     if (!currentToken || !appId || !appSecret) {
       throw new Error('Variáveis INSTAGRAM_ACCESS_TOKEN, INSTA_APP_ID ou INSTA_APP_SECRET não configuradas');
     }
 
-    // Verifica quando o token expira
-    const debugResponse = await axios.get('https://graph.facebook.com/debug_token', {
-      params: {
-        input_token: currentToken,
-        access_token: `${appId}|${appSecret}`,
-      },
-    });
+    let expires_at: number;
+    let is_valid: boolean;
 
-    const { expires_at, is_valid } = debugResponse.data.data;
+    try {
+      const debugResponse = await axios.get('https://graph.facebook.com/debug_token', {
+        params: {
+          input_token: currentToken,
+          access_token: `${appId}|${appSecret}`,
+        },
+      });
+      expires_at = debugResponse.data.data.expires_at;
+      is_valid = debugResponse.data.data.is_valid;
+      console.log('[Instagram] Token válido:', is_valid, '| Expira em (unix):', expires_at);
+    } catch (err) {
+      console.error('[Instagram] Erro ao verificar token:', JSON.stringify(err.response?.data, null, 2) || err.message);
+      throw new Error('Falha ao verificar token do Instagram: ' + (err.response?.data?.error?.message || err.message));
+    }
 
     if (!is_valid) {
       throw new Error('Token do Instagram inválido. Gere um novo token manualmente no Meta for Developers.');
