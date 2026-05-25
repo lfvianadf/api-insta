@@ -53,6 +53,52 @@ export class ApiInstaProcessor extends WorkerHost {
     }
   }
 
+  private async refreshTokenIfNeeded(): Promise<string> {
+    const currentToken = process.env.INSTAGRAM_ACCESS_TOKEN;
+    const appId = process.env.INSTA_APP_ID;
+    const appSecret = process.env.INSTA_APP_SECRET;
+
+    if (!currentToken || !appId || !appSecret) {
+      throw new Error('Variáveis INSTAGRAM_ACCESS_TOKEN, INSTA_APP_ID ou INSTA_APP_SECRET não configuradas');
+    }
+
+    // Verifica quando o token expira
+    const debugResponse = await axios.get('https://graph.facebook.com/debug_token', {
+      params: {
+        input_token: currentToken,
+        access_token: `${appId}|${appSecret}`,
+      },
+    });
+
+    const { expires_at, is_valid } = debugResponse.data.data;
+
+    if (!is_valid) {
+      throw new Error('Token do Instagram inválido. Gere um novo token manualmente no Meta for Developers.');
+    }
+
+    // Renova se faltar menos de 15 dias para expirar
+    const daysUntilExpiry = (expires_at - Date.now() / 1000) / 86400;
+    if (daysUntilExpiry < 15) {
+      console.log(`[Instagram] Token expira em ${Math.floor(daysUntilExpiry)} dias. Renovando...`);
+
+      const refreshResponse = await axios.get('https://graph.facebook.com/oauth/access_token', {
+        params: {
+          grant_type: 'fb_exchange_token',
+          client_id: appId,
+          client_secret: appSecret,
+          fb_exchange_token: currentToken,
+        },
+      });
+
+      const newToken = refreshResponse.data.access_token;
+      process.env.INSTAGRAM_ACCESS_TOKEN = newToken;
+      console.log('[Instagram] Token renovado com sucesso. Atualize o .env com o novo valor:', newToken);
+      return newToken;
+    }
+
+    return currentToken;
+  }
+
   private async handleInstagramPublish(job: Job<any>) {
   const { postId, mediaUrl, caption, mimetype } = job.data;
 
@@ -60,10 +106,10 @@ export class ApiInstaProcessor extends WorkerHost {
   console.log('[Instagram] Job recebido:', { postId, mediaUrl, caption, mimetype });
 
   const igBusinessId = process.env.INSTAGRAM_BUSINESS_ID;
-  const accessToken = process.env.INSTAGRAM_ACCESS_TOKEN;
+  const accessToken = await this.refreshTokenIfNeeded();
 
-  if (!igBusinessId || !accessToken) {
-    throw new Error('Variáveis INSTAGRAM_BUSINESS_ID ou INSTAGRAM_ACCESS_TOKEN não configuradas');
+  if (!igBusinessId) {
+    throw new Error('Variável INSTAGRAM_BUSINESS_ID não configurada');
   }
 
   const isVideo = mimetype?.startsWith('video');
