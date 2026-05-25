@@ -118,7 +118,7 @@ export class ApiInstaProcessor extends WorkerHost {
 
     try {
       const containerResponse = await axios.post(
-        `https://graph.instagram.com/v25.0/${igBusinessId}/media`,
+        `https://graph.facebook.com/v25.0/${igBusinessId}/media`,
         {
           [isVideo ? 'video_url' : 'image_url']: mediaUrl,
           caption,
@@ -134,7 +134,7 @@ export class ApiInstaProcessor extends WorkerHost {
       await this.waitForVideoReady(creationId, accessToken);
 
       const publishResponse = await axios.post(
-        `https://graph.instagram.com/v25.0/${igBusinessId}/media_publish`,
+        `https://graph.facebook.com/v25.0/${igBusinessId}/media_publish`,
         {
           creation_id: creationId,
           access_token: accessToken,
@@ -172,7 +172,7 @@ export class ApiInstaProcessor extends WorkerHost {
       await new Promise((resolve) => setTimeout(resolve, intervalMs));
 
       const statusResponse = await axios.get(
-        `https://graph.instagram.com/v25.0/${creationId}`,
+        `https://graph.facebook.com/v25.0/${creationId}`,
         {
           params: {
             fields: 'status_code,status',
