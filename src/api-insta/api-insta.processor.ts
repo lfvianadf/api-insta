@@ -47,6 +47,51 @@ export class ApiInstaProcessor extends WorkerHost {
     }
   }
 
+  private async refreshTokenAfterPublish(currentToken: string): Promise<void> {
+    const appId = process.env.INSTA_APP_ID;
+    const appSecret = process.env.INSTA_APP_SECRET;
+
+    if (!appId || !appSecret) return;
+
+    try {
+      const debugResponse = await axios.get('https://graph.facebook.com/debug_token', {
+        params: {
+          input_token: currentToken,
+          access_token: `${appId}|${appSecret}`,
+        },
+      });
+
+      const { expires_at, is_valid } = debugResponse.data.data;
+
+      if (!is_valid) {
+        console.warn('[Instagram] Token inválido — não é possível renovar automaticamente.');
+        return;
+      }
+
+      const daysUntilExpiry = (expires_at - Date.now() / 1000) / 86400;
+      if (daysUntilExpiry < 15) {
+        console.log(`[Instagram] Token expira em ${Math.floor(daysUntilExpiry)} dias. Renovando...`);
+
+        const refreshResponse = await axios.get('https://graph.facebook.com/oauth/access_token', {
+          params: {
+            grant_type: 'fb_exchange_token',
+            client_id: appId,
+            client_secret: appSecret,
+            fb_exchange_token: currentToken,
+          },
+        });
+
+        const newToken = refreshResponse.data.access_token;
+        if (newToken) {
+          process.env.INSTAGRAM_ACCESS_TOKEN = newToken;
+          console.log('[Instagram] Token renovado. Atualize o .env com o novo valor:', newToken);
+        }
+      }
+    } catch (err: any) {
+      console.error('[Instagram] Erro ao tentar renovar token:', err.response?.data?.error?.message || err.message);
+    }
+  }
+
   private async handleInstagramPublish(job: Job<any>) {
     const { postId, mediaUrl, caption, mimetype } = job.data;
 
@@ -98,6 +143,8 @@ export class ApiInstaProcessor extends WorkerHost {
       console.log('[Instagram] Publicado com sucesso. igId:', igId);
 
       await this.supabase.updatePostIgStatus(postId, 'published', igId);
+
+      await this.refreshTokenAfterPublish(accessToken);
 
       return { success: true, igId };
     } catch (error: any) {
